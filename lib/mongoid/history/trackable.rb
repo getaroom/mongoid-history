@@ -139,8 +139,7 @@ module Mongoid::History
         # the child to parent (embedded_in, belongs_to) relation will be defined
         if node._parent
           meta = node._parent.relations.values.select do |relation|
-            node_class = node.metadata.class_name.to_s
-            relation.class_name == node_class
+            relation.class_name == node.metadata.class_name.to_s && relation.name == node.metadata.name
           end.first
         end
 
@@ -184,9 +183,13 @@ module Mongoid::History
       def history_tracker_attributes(method)
         return @history_tracker_attributes if @history_tracker_attributes
 
+        scope = history_trackable_options[:scope]
+        scope = _parent.collection_name.to_s.singularize.to_sym if scope.is_a?(Array)
+        scope = metadata.inverse_class_name.tableize.singularize.to_sym if metadata.present? && scope == metadata.as
+
         @history_tracker_attributes = {
           :association_chain  => traverse_association_chain,
-          :scope              => history_trackable_options[:scope],
+          :scope              => scope,
           :modifier        => send(history_trackable_options[:modifier_field])
         }
 

@@ -1,3 +1,10 @@
+Next Release
+------------
+
+* [#106](https://github.com/aq1018/mongoid-history/pull/106) - Added support for polymorphic relationship `scope` -  [@adbeelitamar](https://github.com/adbeelitamar).
+* [#106](https://github.com/aq1018/mongoid-history/pull/106) - Enabled specifying an array of relationships in `scope` -  [@adbeelitamar](https://github.com/adbeelitamar).
+* Your contribution here.
+
 0.2.4 (8/21/2012)
 -----------------
 

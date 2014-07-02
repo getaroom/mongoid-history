@@ -71,7 +71,7 @@ module Mongoid::History
 
     module MyInstanceMethods
       def history_tracks
-        @history_tracks ||= Mongoid::History.tracker_class.where(:scope => history_trackable_options[:scope], :association_chain => { "$elemMatch" => association_hash })
+        @history_tracks ||= Mongoid::History.tracker_class.where(:scope => related_scope, :association_chain => { "$elemMatch" => association_hash })
       end
 
       #  undo :from => 1, :to => 5
@@ -124,6 +124,13 @@ module Mongoid::History
 
       def should_track_update?
         track_history? && !modified_attributes_for_update.blank?
+      end
+
+      def related_scope
+        scope = history_trackable_options[:scope]
+        scope = _parent.collection_name.to_s.singularize.to_sym if scope.is_a?(Array)
+        scope = metadata.inverse_class_name.tableize.singularize.to_sym if metadata.present? && scope == metadata.as
+        scope
       end
 
       def traverse_association_chain(node=self)
@@ -183,13 +190,9 @@ module Mongoid::History
       def history_tracker_attributes(method)
         return @history_tracker_attributes if @history_tracker_attributes
 
-        scope = history_trackable_options[:scope]
-        scope = _parent.collection_name.to_s.singularize.to_sym if scope.is_a?(Array)
-        scope = metadata.inverse_class_name.tableize.singularize.to_sym if metadata.present? && scope == metadata.as
-
         @history_tracker_attributes = {
           :association_chain  => traverse_association_chain,
-          :scope              => scope,
+          :scope              => related_scope,
           :modifier        => send(history_trackable_options[:modifier_field])
         }
 

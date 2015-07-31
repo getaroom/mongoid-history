@@ -59,7 +59,7 @@ describe Mongoid::History do
       include Mongoid::Document
       include Mongoid::Timestamps
       include Mongoid::History::Trackable
-      
+
       belongs_to :updated_by, :class_name => "User"
 
       field             :title
@@ -372,11 +372,11 @@ describe Mongoid::History do
       before(:each) do
         Mongoid.instantiate_observers
         Thread.current[:mongoid_history_sweeper_controller] = self
-        self.stub!(:current_user).and_return @user
+        self.stub(:current_user).and_return @user
         @tag_foo = @post.tags.create(:title => "foo", :updated_by => @user)
         @tag_bar = @post.tags.create(:title => "bar")
       end
-      
+
       after(:each) do
         Thread.current[:mongoid_history_sweeper_controller] = nil
       end
@@ -409,7 +409,7 @@ describe Mongoid::History do
         @tag_foo.history_tracks.last.association_chain.last["name"].should == "tags"
         lambda{ @tag_foo.history_tracks.last.trackable }.should_not raise_error
       end
-      
+
       it "should save modifier" do
         @tag_foo.history_tracks.last.modifier.should eq @user
         @tag_bar.history_tracks.last.modifier.should eq @user

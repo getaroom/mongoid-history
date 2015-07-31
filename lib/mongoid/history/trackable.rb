@@ -240,7 +240,7 @@ module Mongoid::History
           modified[k] = m unless m.nil?
         end
 
-        return original.easy_diff modified
+        [original, modified]
       end
 
     end

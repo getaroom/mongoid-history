@@ -9,5 +9,5 @@ group :test do
   gem "yard"
   gem "bundler", ">= 1.0.0"
   gem "jeweler"
-  gem "database_cleaner"
+  gem "database_cleaner", "!= 1.5.0"
 end

@@ -147,6 +147,14 @@ describe Mongoid::History do
         }.should change(HistoryTracker, :count).by(0)
       end
 
+      it "should not create a history track for only a re-sorted array" do
+        @post.update_attributes(:title => [1, 2])
+
+        lambda {
+          @post.update_attributes(:title => [2, 1])
+        }.should_not change(HistoryTracker, :count)
+      end
+
       it "should assign modified fields" do
         @post.update_attributes(:title => "Another Test")
         @post.history_tracks.last.modified.should == {

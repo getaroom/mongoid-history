@@ -123,7 +123,7 @@ module Mongoid::History
       end
 
       def should_track_update?
-        track_history? && !modified_attributes_for_update.blank?
+        track_history? && modified_attributes_for_update.present?
       end
 
       def related_scope
@@ -156,17 +156,28 @@ module Mongoid::History
         { 'name' => name, 'id' => node.id}
       end
 
+      def same_array(values)
+        old_value, new_value = values
+        Array === old_value && Array === new_value && ( old_value & new_value == old_value )
+      end
+
       def modified_attributes_for_update
-        @modified_attributes_for_update ||= if history_trackable_options[:on] == :all
-          changes.reject do |k, v|
-            history_trackable_options[:except].include?(k)
-          end
-        else
-          changes.reject do |k, v|
-            !history_trackable_options[:on].include?(k)
+        unless @modified_attributes_for_update
+
+          @modified_attributes_for_update = if history_trackable_options[:on] == :all
+            changes.reject do |k, v|
+              history_trackable_options[:except].include?(k)
+            end
+          else
+            changes.reject do |k, v|
+              !history_trackable_options[:on].include?(k)
+            end
           end
 
+          @modified_attributes_for_update.reject! { |k, v| same_array(v) }
         end
+
+        @modified_attributes_for_update
       end
 
       def modified_attributes_for_create

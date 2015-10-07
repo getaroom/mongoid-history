@@ -156,13 +156,14 @@ module Mongoid::History
         { 'name' => name, 'id' => node.id}
       end
 
-      def same_array(values)
+      def same_array?(values)
         old_value, new_value = values
         Array === old_value && Array === new_value && ( old_value & new_value == old_value )
       end
 
       def modified_attributes_for_update
         unless @modified_attributes_for_update
+          changes = self.changes.reject { |k, v| v.nil? || same_array?(v) }
 
           @modified_attributes_for_update = if history_trackable_options[:on] == :all
             changes.reject do |k, v|
@@ -174,7 +175,7 @@ module Mongoid::History
             end
           end
 
-          @modified_attributes_for_update.reject! { |k, v| same_array(v) }
+
         end
 
         @modified_attributes_for_update
@@ -220,6 +221,7 @@ module Mongoid::History
 
       def track_update
         return unless should_track_update?
+
         current_version = (self.send(history_trackable_options[:version_field]) || 0 ) + 1
         self.send("#{history_trackable_options[:version_field]}=", current_version)
         Mongoid::History.tracker_class.create!(history_tracker_attributes(:update).merge(:version => current_version, :action => "update", :trackable => self))

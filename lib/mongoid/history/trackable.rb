@@ -158,7 +158,9 @@ module Mongoid::History
 
       def same_array?(values)
         old_value, new_value = values
-        Array === old_value && Array === new_value && ( old_value & new_value == old_value )
+        Array === old_value && Array === new_value &&
+          ( old_value & new_value == old_value  ) &&
+          ( old_value.size == new_value.size )
       end
 
       def modified_attributes_for_update

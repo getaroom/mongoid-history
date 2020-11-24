@@ -3,6 +3,7 @@
 * Your contribution here.
 * [#236](https://github.com/mongoid/mongoid-history/pull/236): Fix Ruby 2.7 keyword argument warnings - [@vasilysn](https://github.com/vasilysn).
 * [#237](https://github.com/mongoid/mongoid-history/pull/237): Fix tracking subclasses with additional fields - [@getaroom](https://github.com/getaroom).
+* [](): Don't track changes on embedded documents if an ancestor is being destroyed in the same operation - [@getaroom](https://github.com/getaroom).
 
 ### 0.8.2 (2019/12/02)
 

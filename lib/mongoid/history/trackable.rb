@@ -332,10 +332,7 @@ module Mongoid
         end
 
         def increment_current_version?(action)
-          !(
-            (action == :destroy) ||
-            ancestor_flagged_for_destroy?(_parent)
-          )
+          action != :destroy && !ancestor_flagged_for_destroy?(_parent)
         end
 
         def track_history_for_action(action)

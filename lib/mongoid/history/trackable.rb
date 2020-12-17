@@ -19,8 +19,6 @@ module Mongoid
           end
 
           include MyInstanceMethods
-          include MyPrivateInstanceMethods
-          include MyProtectedInstanceMethods
           extend SingletonMethods
 
           delegate :history_trackable_options, to: 'self.class'
@@ -138,9 +136,7 @@ module Mongoid
         def _create_relation(name, value)
           send("create_#{self.class.relation_alias(name)}!", value)
         end
-      end
 
-      module MyPrivateInstanceMethods
         private
 
         def ancestor_flagged_for_destroy?(doc)
@@ -322,9 +318,7 @@ module Mongoid
         def increment_current_version
           next_version.tap { |version| send("#{history_trackable_options[:version_field]}=", version) }
         end
-      end
 
-      module MyProtectedInstanceMethods
         protected
 
         def track_history_for_action?(action)

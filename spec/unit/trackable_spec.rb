@@ -1,6 +1,64 @@
 require 'spec_helper'
 
-shared_examples 'track history' do
+describe Mongoid::History::Trackable do
+  before :each do
+    class MyModel
+      include Mongoid::Document
+      include Mongoid::History::Trackable
+
+      field :foo
+    end
+
+    class MyDynamicModel
+      include Mongoid::Document
+      include Mongoid::History::Trackable
+      include Mongoid::Attributes::Dynamic unless Mongoid::Compatibility::Version.mongoid3?
+    end
+
+    class MyDeeplyNestedModel
+      include Mongoid::Document
+      include Mongoid::History::Trackable
+
+      embeds_many :children, class_name: 'MyNestableModel', cascade_callbacks: true # The problem only occurs if callbacks are cascaded
+      accepts_nested_attributes_for :children, allow_destroy: true
+      track_history modifier_field: nil
+    end
+
+    class MyNestableModel
+      include Mongoid::Document
+      include Mongoid::History::Trackable
+
+      embedded_in :parent, class_name: 'MyDeeplyNestedModel'
+      embeds_many :children, class_name: 'MyNestableModel', cascade_callbacks: true
+      accepts_nested_attributes_for :children, allow_destroy: true
+      field :name, type: String
+      track_history modifier_field: nil
+    end
+
+    class HistoryTracker
+      include Mongoid::History::Tracker
+    end
+
+    class User
+      include Mongoid::Document
+    end
+  end
+
+  after :each do
+    Object.send(:remove_const, :MyModel)
+    Object.send(:remove_const, :MyDynamicModel)
+    Object.send(:remove_const, :HistoryTracker)
+    Object.send(:remove_const, :User)
+    Object.send(:remove_const, :MyDeeplyNestedModel)
+    Object.send(:remove_const, :MyNestableModel)
+  end
+
+  let(:user) { User.create! }
+
+  it 'should have #track_history' do
+    expect(MyModel).to respond_to :track_history
+  end
+
   describe '#track_history' do
     before :each do
       class MyModelWithNoModifier
@@ -532,234 +590,6 @@ shared_examples 'track history' do
       end
     end
   end
-end
-
-shared_examples 'track update' do
-  describe '#track_update' do
-    before(:each) { MyModel.track_history(on: :foo, track_update: true) }
-
-    let!(:m) { MyModel.create!(foo: 'bar', modifier: user) }
-
-    it 'should create history' do
-      expect { m.update_attributes!(foo: 'bar2') }.to change(Tracker, :count).by(1)
-    end
-
-    it 'should not create history when error raised' do
-      expect(m).to receive(:update_attributes!).and_raise(StandardError)
-      expect do
-        expect { m.update_attributes!(foo: 'bar2') }.to raise_error(StandardError)
-      end.to change(Tracker, :count).by(0)
-    end
-  end
-end
-
-shared_examples 'track destroy' do
-  describe '#track_destroy' do
-    before(:each) { MyModel.track_history(on: :foo, track_destroy: true) }
-
-    let!(:m) { MyModel.create!(foo: 'bar', modifier: user) }
-
-    it 'should create history' do
-      expect { m.destroy }.to change(Tracker, :count).by(1)
-    end
-
-    it 'should not create history when error raised' do
-      expect(m).to receive(:destroy).and_raise(StandardError)
-      expect do
-        expect { m.destroy }.to raise_error(StandardError)
-      end.to change(Tracker, :count).by(0)
-    end
-
-    context 'with a deeply nested model' do
-      let(:m) do
-        MyDeeplyNestedModel.create!(
-          children: [
-            MyNestableModel.new(
-              name: 'grandparent',
-              children: [
-                MyNestableModel.new(name: 'parent 1', children: [MyNestableModel.new(name: 'child 1')]),
-                MyNestableModel.new(name: 'parent 2', children: [MyNestableModel.new(name: 'child 2')])
-              ]
-            )
-          ]
-        )
-      end
-      let(:attributes) do
-        {
-          'children_attributes' => [
-            {
-              'id' =>  m.children[0].id,
-              'children_attributes' => [
-                { 'id' => m.children[0].children[0].id, '_destroy' => '0' },
-                { 'id' => m.children[0].children[1].id, '_destroy' => '1' }
-              ]
-            }
-          ]
-        }
-      end
-
-      subject(:updated) do
-        m.update_attributes attributes
-        m.reload
-      end
-
-      let(:names_of_destroyed) do
-        MyDeeplyNestedModel.tracker_class
-                           .where('association_chain.id' => updated.id, 'action' => 'destroy')
-                           .map { |track| track.original['name'] }
-      end
-
-      it 'does not corrupt embedded models' do
-        expect(updated.children[0].children.count).to eq 1 # When the problem occurs, the 2nd child will continue to be present, but will only contain the version attribute
-      end
-
-      it 'creates a history track for the doc explicitly destroyed' do
-        expect(names_of_destroyed).to include 'parent 2'
-      end
-
-      it 'creates a history track for the doc implicitly destroyed' do
-        expect(names_of_destroyed).to include 'child 2'
-      end
-    end
-
-    context 'with multiple embeds_many models' do
-      let(:m) do
-        MyDeeplyNestedModel.create!(
-          children: [
-            MyNestableModel.new(
-              name: 'parent',
-              children: [
-                MyNestableModel.new(name: 'child 1'),
-                MyNestableModel.new(name: 'child 2'),
-                MyNestableModel.new(name: 'child 3')
-              ]
-            )
-          ]
-        )
-      end
-
-      let(:attributes) do
-        {
-          'children_attributes' => [
-            {
-              'id' =>  m.children[0].id,
-              'children_attributes' => [
-                { 'id' => m.children[0].children[0].id, '_destroy' => '0' },
-                { 'id' => m.children[0].children[1].id, '_destroy' => '1' },
-                { 'id' => m.children[0].children[2].id, '_destroy' => '1' }
-              ]
-            }
-          ]
-        }
-      end
-
-      subject(:updated) do
-        m.update_attributes attributes
-        m.reload
-      end
-
-      it 'does not corrupt the document' do
-        expect(updated.children[0].children.length).to eq(1)
-      end
-    end
-  end
-end
-
-shared_examples 'track create' do
-  describe '#track_create' do
-    before :each do
-      class MyModelWithNoModifier
-        include Mongoid::Document
-        include Mongoid::History::Trackable
-
-        field :foo
-      end
-    end
-
-    after(:each) { Object.send(:remove_const, :MyModelWithNoModifier) }
-
-    before :each do
-      MyModel.track_history(on: :foo, track_create: true)
-      MyModelWithNoModifier.track_history modifier_field: nil
-    end
-
-    it 'should create history' do
-      expect { MyModel.create!(foo: 'bar', modifier: user) }.to change(Tracker, :count).by(1)
-    end
-
-    context 'no modifier_field' do
-      it 'should create history' do
-        expect { MyModelWithNoModifier.create!(foo: 'bar').to change(Tracker, :count).by(1) }
-      end
-    end
-
-    it 'should not create history when error raised' do
-      expect(MyModel).to receive(:create!).and_raise(StandardError)
-      expect do
-        expect { MyModel.create!(foo: 'bar') }.to raise_error(StandardError)
-      end.to change(Tracker, :count).by(0)
-    end
-  end
-end
-
-describe Mongoid::History::Trackable do
-  before :each do
-    class MyModel
-      include Mongoid::Document
-      include Mongoid::History::Trackable
-
-      field :foo
-    end
-
-    class MyDynamicModel
-      include Mongoid::Document
-      include Mongoid::History::Trackable
-      include Mongoid::Attributes::Dynamic unless Mongoid::Compatibility::Version.mongoid3?
-    end
-
-    class MyDeeplyNestedModel
-      include Mongoid::Document
-      include Mongoid::History::Trackable
-
-      embeds_many :children, class_name: 'MyNestableModel', cascade_callbacks: true # The problem only occurs if callbacks are cascaded
-      accepts_nested_attributes_for :children, allow_destroy: true
-      track_history modifier_field: nil
-    end
-
-    class MyNestableModel
-      include Mongoid::Document
-      include Mongoid::History::Trackable
-
-      embedded_in :parent, class_name: 'MyDeeplyNestedModel'
-      embeds_many :children, class_name: 'MyNestableModel', cascade_callbacks: true
-      accepts_nested_attributes_for :children, allow_destroy: true
-      field :name, type: String
-      track_history modifier_field: nil
-    end
-
-    class HistoryTracker
-      include Mongoid::History::Tracker
-    end
-
-    class User
-      include Mongoid::Document
-    end
-  end
-
-  after :each do
-    Object.send(:remove_const, :MyModel)
-    Object.send(:remove_const, :MyDynamicModel)
-    Object.send(:remove_const, :HistoryTracker)
-    Object.send(:remove_const, :User)
-    Object.send(:remove_const, :MyDeeplyNestedModel)
-    Object.send(:remove_const, :MyNestableModel)
-  end
-
-  let(:user) { User.create! }
-
-  it 'should have #track_history' do
-    expect(MyModel).to respond_to :track_history
-  end
 
   describe '#history_settings' do
     before(:each) { Mongoid::History.trackable_settings = nil }
@@ -988,10 +818,167 @@ describe Mongoid::History::Trackable do
     end
   end
 
-  include_examples 'track history'
-  include_examples 'track update'
-  include_examples 'track destroy'
-  include_examples 'track create'
+  describe '#track_update' do
+    before(:each) { MyModel.track_history(on: :foo, track_update: true) }
+
+    let!(:m) { MyModel.create!(foo: 'bar', modifier: user) }
+
+    it 'should create history' do
+      expect { m.update_attributes!(foo: 'bar2') }.to change(Tracker, :count).by(1)
+    end
+
+    it 'should not create history when error raised' do
+      expect(m).to receive(:update_attributes!).and_raise(StandardError)
+      expect do
+        expect { m.update_attributes!(foo: 'bar2') }.to raise_error(StandardError)
+      end.to change(Tracker, :count).by(0)
+    end
+  end
+
+  describe '#track_destroy' do
+    before(:each) { MyModel.track_history(on: :foo, track_destroy: true) }
+
+    let!(:m) { MyModel.create!(foo: 'bar', modifier: user) }
+
+    it 'should create history' do
+      expect { m.destroy }.to change(Tracker, :count).by(1)
+    end
+
+    it 'should not create history when error raised' do
+      expect(m).to receive(:destroy).and_raise(StandardError)
+      expect do
+        expect { m.destroy }.to raise_error(StandardError)
+      end.to change(Tracker, :count).by(0)
+    end
+
+    context 'with a deeply nested model' do
+      let(:m) do
+        MyDeeplyNestedModel.create!(
+          children: [
+            MyNestableModel.new(
+              name: 'grandparent',
+              children: [
+                MyNestableModel.new(name: 'parent 1', children: [MyNestableModel.new(name: 'child 1')]),
+                MyNestableModel.new(name: 'parent 2', children: [MyNestableModel.new(name: 'child 2')])
+              ]
+            )
+          ]
+        )
+      end
+      let(:attributes) do
+        {
+          'children_attributes' => [
+            {
+              'id' =>  m.children[0].id,
+              'children_attributes' => [
+                { 'id' => m.children[0].children[0].id, '_destroy' => '0' },
+                { 'id' => m.children[0].children[1].id, '_destroy' => '1' }
+              ]
+            }
+          ]
+        }
+      end
+
+      subject(:updated) do
+        m.update_attributes attributes
+        m.reload
+      end
+
+      let(:names_of_destroyed) do
+        MyDeeplyNestedModel.tracker_class
+                           .where('association_chain.id' => updated.id, 'action' => 'destroy')
+                           .map { |track| track.original['name'] }
+      end
+
+      it 'does not corrupt embedded models' do
+        expect(updated.children[0].children.count).to eq 1 # When the problem occurs, the 2nd child will continue to be present, but will only contain the version attribute
+      end
+
+      it 'creates a history track for the doc explicitly destroyed' do
+        expect(names_of_destroyed).to include 'parent 2'
+      end
+
+      it 'creates a history track for the doc implicitly destroyed' do
+        expect(names_of_destroyed).to include 'child 2'
+      end
+    end
+
+    context 'with multiple embeds_many models' do
+      let(:m) do
+        MyDeeplyNestedModel.create!(
+          children: [
+            MyNestableModel.new(
+              name: 'parent',
+              children: [
+                MyNestableModel.new(name: 'child 1'),
+                MyNestableModel.new(name: 'child 2'),
+                MyNestableModel.new(name: 'child 3')
+              ]
+            )
+          ]
+        )
+      end
+
+      let(:attributes) do
+        {
+          'children_attributes' => [
+            {
+              'id' =>  m.children[0].id,
+              'children_attributes' => [
+                { 'id' => m.children[0].children[0].id, '_destroy' => '0' },
+                { 'id' => m.children[0].children[1].id, '_destroy' => '1' },
+                { 'id' => m.children[0].children[2].id, '_destroy' => '1' }
+              ]
+            }
+          ]
+        }
+      end
+
+      subject(:updated) do
+        m.update_attributes attributes
+        m.reload
+      end
+
+      it 'does not corrupt the document' do
+        expect(updated.children[0].children.length).to eq(1)
+      end
+    end
+  end
+
+  describe '#track_create' do
+    before :each do
+      class MyModelWithNoModifier
+        include Mongoid::Document
+        include Mongoid::History::Trackable
+
+        field :foo
+      end
+    end
+
+    after(:each) { Object.send(:remove_const, :MyModelWithNoModifier) }
+
+    before :each do
+      MyModel.track_history(on: :foo, track_create: true)
+      MyModelWithNoModifier.track_history modifier_field: nil
+    end
+
+    it 'should create history' do
+      expect { MyModel.create!(foo: 'bar', modifier: user) }.to change(Tracker, :count).by(1)
+    end
+
+    context 'no modifier_field' do
+      it 'should create history' do
+        expect { MyModelWithNoModifier.create!(foo: 'bar').to change(Tracker, :count).by(1) }
+      end
+    end
+
+    it 'should not create history when error raised' do
+      expect(MyModel).to receive(:create!).and_raise(StandardError)
+      expect do
+        expect { MyModel.create!(foo: 'bar') }.to raise_error(StandardError)
+      end.to change(Tracker, :count).by(0)
+    end
+  end
 
   context 'changing collection' do
     before :each do
